@@ -1,6 +1,7 @@
 # Guide Complet : Installation Data Lakehouse Local (Dremio + MinIO) sur Docker Windows
 
-Ce guide explique comment monter un environnement Big Data local. Nous utiliserons le dépôt Git d'Alex Merced.
+Ce guide explique comment monter un environnement Big Data local. Nous utiliserons le dépôt Git.
+
 **Objectif :** Connecter **Dremio** (Moteur de requête) à **MinIO** (Stockage) en utilisant le connecteur **Amazon S3**.
 
 ---
@@ -151,3 +152,54 @@ Voici les adresses pour accéder à tous vos services locaux une fois lancés :
 | `no configuration file provided` | Vous n'êtes pas dans le bon dossier. | Faites `cd le_nom_du_dossier` avant de lancer docker-compose. |
 | `Unsupported or unrecognized SSL message` | Dremio essaie de parler HTTPS à MinIO HTTP. | **Décochez** "Encrypt connection" dans la source Dremio. |
 | `UnknownHostException` | Dremio ne trouve pas le serveur. | Dans `fs.s3a.endpoint`, mettez `minio:9000` au lieu de localhost. |
+
+---
+## 7. Premières Requêtes SQL (Transformation & Analyse)
+
+Une fois la source connectée, vous verrez vos fichiers (ex: `iris.csv`). Par défaut, Dremio les voit comme de simples fichiers textes. Nous devons les convertir en **Tables (Datasets)**.
+
+### A. Transformer le CSV en Dataset
+1.  Dans l'interface Dremio, passez la souris sur le fichier **`iris.csv`**.
+2.  Cliquez sur l'icône **"Format Settings"** (le petit dossier ou crayon à droite du nom).
+3.  Configurez comme suit :
+    *   **Format :** `Text (delimited)`
+    *   **Field Delimiter :** `,` (Comma)
+    *   ✅ **Cochez "Extract Field Names"** (Indispensable pour avoir les en-têtes de colonnes).
+4.  Cliquez sur **Save**.
+    *   *Résultat :* L'icône du fichier devient violette. C'est maintenant une table prête à l'emploi.
+
+### B. Exécuter du SQL
+Cliquez sur le bouton **New Query** (ou SQL Runner) en haut à gauche et testez ces commandes :
+
+**1. Voir les données :**
+```sql
+SELECT * 
+FROM MinioData.datalake."iris.csv"
+LIMIT 20
+```
+
+**2. Compter les lignes :**
+```sql
+SELECT COUNT(*) as total_fleurs
+FROM MinioData.datalake."iris.csv"
+```
+
+**3. Agrégation (Moyenne par espèce) :**
+C'est ici la puissance du Lakehouse : faire des stats sur un fichier CSV comme si c'était une base de données.
+```sql
+SELECT 
+    species, 
+    AVG(sepal_length) as moyenne_sepal,
+    AVG(petal_length) as moyenne_petal
+FROM MinioData.datalake."iris.csv"
+GROUP BY species
+```
+
+### C. Créer une "Vue" (Virtual Dataset)
+Pour sauvegarder votre travail sans dupliquer la donnée :
+1.  Exécutez la requête d'agrégation ci-dessus (n°3).
+2.  Cliquez sur la flèche à côté du bouton **Save Script** -> **Save View as...**.
+3.  Nommez-la `stats_iris` et enregistrez-la dans votre espace.
+    *   *Avantage :* Si vous modifiez le fichier CSV dans MinIO, cette vue se mettra à jour automatiquement !
+
+> **Note :** Le fichier `README.pdf` visible dans MinIO ne peut pas être requêté. Dremio ne traite que la donnée structurée (CSV, JSON, Parquet, Iceberg).
