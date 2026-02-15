@@ -18,11 +18,11 @@ Si ce n'est pas déjà fait :
 2.  Ouvrez un terminal (PowerShell ou Invite de commandes).
 3.  Clonez le dépôt :
     ```bash
-    git clone https://github.com/developer-advocacy-dremio/dremio-demo-env-092024.git
+    git clone https://github.com/bkablam11/demo-minio-dremio.git
     ```
 4.  **Entrez dans le dossier** (Étape critique pour éviter l'erreur *"configuration file not found"*) :
     ```bash
-    cd dremio-demo-env-092024
+    cd demo-minio-dremio
     ```
 
 ---
@@ -39,8 +39,6 @@ docker pull alexmerced/dremio-superset
 # Image MinIO (Stockage)
 docker pull minio/minio
 
-# (Optionnel si le script le demande) Image Spark
-docker pull alexmerced/spark35nb:latest
 ```
 
 ### B. Placement des données (Seed Data)
@@ -48,21 +46,22 @@ Le projet est configuré pour charger automatiquement des fichiers dans MinIO si
 
 *   **Pour MinIO :** Mettez vos fichiers (CSV, Parquet, JSON) dans le dossier :
     `./minio-data` (situé dans le dossier que vous avez cloné).
-*   **Pour Spark :** Mettez vos notebooks dans :
-    `./notebook-seed`.
 
 ---
 
 ## 3. Lancement des Services
 
-Une fois les images téléchargées, lancez l'orchestration :
-
+Une fois les images téléchargées, Allez dans Docker et lancer l'orchestration des containers.
 ```bash
-docker-compose up -d
+# Orchestration des containers
+docker-compose up -d minio dremio
+# Verification des containers allumés
+docker ps
+# Arret des containers
+docker-compose down
 ```
-*L'option `-d` lance les services en arrière-plan.*
 
-> **Vérification :** Ouvrez Docker Desktop. Vous devriez voir un groupe `dremio-demo-env` avec les conteneurs `minio`, `dremio`, `nessie`, etc. allumés en vert.
+> **Vérification :** Ouvrez Docker Desktop. Vous devriez voir un groupe `dremio-demo-env` avec les conteneurs `minio`, `dremio`, etc. allumés en vert.
 
 ---
 
@@ -74,7 +73,7 @@ docker-compose up -d
     *   Password : `password`
 3.  Vérifiez que vos fichiers placés dans le dossier `./minio-data` apparaissent bien dans le bucket. Sinon, créez un bucket nommé `datalake` et uploadez un fichier manuellement.
 
-![Insérer capture d'écran MinIO ici]
+![Interface MinIO](./img1.png)
 
 ---
 
@@ -87,34 +86,52 @@ C'est ici que nous connectons Dremio à MinIO en utilisant le protocole S3.
 3.  Cliquez sur le bouton **+ Add Source** (en bas à gauche).
 4.  Sélectionnez **Amazon S3**.
 
-### Configuration de la source S3 :
+![Interface Dremio](./img2.png)
 
-#### Onglet "General"
-*   **Name :** `MinioData` (ou le nom de votre choix).
-*   **Authentication :** AWS Access Key.
-*   **Access Key :** `admin`
-*   **Secret Key :** `password`
+![Interface Dremio](./img3.png)
 
-#### Onglet "Advanced Options" (Propriétés de connexion)
-Cochez la case **Enable compatibility mode**.
+### 3. Connexion de Dremio à MinIO (S3)
 
-Ajoutez les 3 propriétés suivantes en cliquant sur **Add Property** :
+Pour connecter Dremio à votre stockage MinIO local, nous allons utiliser le connecteur **Amazon S3** en mode compatibilité.
 
-| Nom (Name) | Valeur (Value) | Explication |
+1.  Cliquez sur le bouton **Add Source** (le `+` bleu) et sélectionnez **Amazon S3**.
+2.  Remplissez le formulaire comme suit :
+
+#### A. Onglet "General" (Authentification)
+
+Remplissez les informations d'identification définies dans votre fichier `docker-compose.yml` :
+
+*   **Name :** `MinioData` (Ce sera le nom de la source dans Dremio).
+*   **Authentication :** Laissez sur `AWS Access Key`.
+*   **AWS Access Key :** `admin`
+*   **AWS Access Secret :** `password`
+*   **Encrypt connection :** ❌ **DÉCOCHEZ OBLIGATOIREMENT CETTE CASE**.
+    *   *Note : MinIO tourne en HTTP local sans certificat SSL. Si vous laissez coché, la connexion échouera.*
+
+![Capture écran General Dremio](./img4.png)
+
+#### B. Onglet "Advanced Options" (Configuration Réseau)
+
+C'est ici que nous disons à Dremio de ne pas aller sur le vrai Amazon AWS, mais sur notre conteneur Docker.
+
+1.  Cochez la case **Enable compatibility mode** (si disponible).
+2.  Dans la section **Connection Properties**, ajoutez les propriétés suivantes une par une :
+
+| Name (Nom) | Value (Valeur) | Explication Technique |
 | :--- | :--- | :--- |
-| **`fs.s3a.path.style.access`** | `true` | Obligatoire pour le mode S3 path-style. |
-| **`fs.s3a.endpoint`** | `minio:9000` | **Attention :** Utilisez `minio:9000` (nom du conteneur) et non localhost. |
-| **`dremio.s3.compat`** | `true` | Active la compatibilité spécifique Dremio/S3. |
+| **`fs.s3a.endpoint`** | `minio:9000` | **Crucial :** Indique l'adresse du conteneur dans le réseau Docker. |
+| **`fs.s3a.path.style.access`** | `true` | Force l'URL sous la forme `domaine/bucket` (requis par MinIO). |
+| **`dremio.s3.compat`** | `true` | Active les correctifs de compatibilité S3 pour Dremio. |
 
-#### Section "Encryption" (Tout en bas)
-*   ❌ **DÉCOCHEZ** la case **Encrypt connection**.
-    *   *Pourquoi ?* Sinon vous aurez l'erreur `Unsupported or unrecognized SSL message`.
+> **⚠️ Attention au piège :** Ne mettez pas `localhost:9000` dans le endpoint !
+> Dremio tourne dans un conteneur. Pour lui, `localhost` c'est lui-même. Il doit contacter le conteneur `minio` via son nom de service Docker.
 
-![Insérer capture d'écran configuration Dremio ici]
+3.  Cliquez sur **Save**.
+![Configuration Amazon S3](./img5.png)
 
-5.  Cliquez sur **Save**.
+***
 
----
+![Interface Dremio](./img6.png)
 
 ## 6. Récapitulatif des Accès (URLs)
 
@@ -122,27 +139,9 @@ Voici les adresses pour accéder à tous vos services locaux une fois lancés :
 
 *   **Dremio (Requêtes SQL) :** [http://localhost:9047](http://localhost:9047)
 *   **MinIO (Stockage) :** [http://localhost:9001](http://localhost:9001)
-*   **Nessie (Catalogue - API uniquement) :** http://localhost:19120
-*   **Spark Notebook :** [http://localhost:8888](http://localhost:8888)
-*   **Superset (Visualisation) :** [http://localhost:8088](http://localhost:8088)
 
 ---
 
-## 7. Gestion du cycle de vie (Arrêt et Nettoyage)
-
-Quand vous avez fini de travailler :
-
-**Pour éteindre les services (les données sont conservées) :**
-```bash
-docker-compose down
-```
-
-**Pour tout effacer (supprime aussi les données et la configuration) :**
-```bash
-docker-compose down -v
-```
-
----
 
 ## 🛠️ Dépannage des erreurs fréquentes
 

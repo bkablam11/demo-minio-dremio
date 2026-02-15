@@ -1,6 +1,25 @@
 version: "3"
 
 services:
+  # Nessie Catalog Server Using In-Memory Store
+  nessie:
+    image: projectnessie/nessie:latest
+    container_name: nessie
+    environment:
+      - QUARKUS_PROFILE=prod
+      - QUARKUS_HTTP_PORT=19120
+      - QUARKUS_LOG_CONSOLE_FORMAT=%d{yyyy-MM-dd HH:mm:ss} %-5p [%c{1.}] (%t) %s%e%n
+      - QUARKUS_LOG_LEVEL=INFO
+      - QUARKUS_DATASOURCE_DB_KIND=rocksdb
+      - QUARKUS_DATASOURCE_JDBC_URL=jdbc:rocksdb:file:///nessie/data
+      - QUARKUS_DATASOURCE_USERNAME=nessie
+      - QUARKUS_DATASOURCE_PASSWORD=nessie
+    volumes:
+      - ./nessie-data:/nessie/data  # Mount local directory to persist RocksDB data
+    ports:
+      - "19120:19120"  # Expose Nessie API port
+    networks:
+      intro-network:
   # Minio Storage Server
   minio:
     image: minio/minio
@@ -32,6 +51,42 @@ services:
       tail -f /dev/null"
     networks:
       intro-network:
+  
+  # Spark
+  spark:
+    platform: linux/x86_64
+    image: alexmerced/spark35nb:latest
+    ports: 
+      - 8080:8080    # Master Web UI
+      - 7077:7077    # Master Port for job submissions
+      - 8081:8081    # Worker Web UI
+      - 4040-4045:4040-4045  # Additional Spark job UI ports for more jobs
+      - 18080:18080  # Spark History Server
+      - 8888:8888    # Jupyter Notebook
+    environment:
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=admin  # Minio username
+      - AWS_SECRET_ACCESS_KEY=password  # Minio password
+      - SPARK_MASTER_HOST=spark
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_WORKER_WEBUI_PORT=8081
+      - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=/tmp/spark-events
+      - SPARK_HOME=/opt/spark  # Set SPARK_HOME explicitly
+    volumes:
+      - ./notebook-seed:/workspace/seed-data  # Volume for seeding data into the container
+    container_name: spark
+    entrypoint: >
+      /bin/bash -c "
+      /opt/spark/sbin/start-master.sh && \
+      /opt/spark/sbin/start-worker.sh spark://$(hostname):7077 && \
+      mkdir -p /tmp/spark-events && \
+      start-history-server.sh && \
+      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password='' && \
+      tail -f /dev/null
+      "
+    networks:
+      intro-network:
 
   # Dremio
   dremio:
@@ -48,5 +103,29 @@ services:
     networks:
       intro-network:
 
+  # Postgres
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydatabase
+    ports:
+      - "5435:5432"
+    volumes:
+      - ./pgseed:/docker-entrypoint-initdb.d/  # Seed data directory
+    networks:
+      intro-network:
 
+  #Superset
+  superset:
+    image: alexmerced/dremio-superset
+    container_name: superset
+    networks:
+      intro-network:
+    ports:
+      - 8088:8088
 
+networks:
+  intro-network:
