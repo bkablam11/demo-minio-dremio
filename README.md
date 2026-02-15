@@ -34,7 +34,7 @@ Pour éviter l'erreur `TLS handshake timeout` due à une connexion lente ou inst
 
 ```bash
 # Image Dremio (avec Superset intégré)
-docker pull alexmerced/dremio-superset
+docker pull dremio/dremio-oss
 
 # Image MinIO (Stockage)
 docker pull minio/minio
