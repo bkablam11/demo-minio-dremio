@@ -1,0 +1,3 @@
+# Ignorer mc.exe et images img1.png à img6.png
+mc.exe
+img[1-6].png
