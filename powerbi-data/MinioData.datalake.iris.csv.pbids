@@ -1,0 +1,16 @@
+{
+  "connections" : [ {
+    "options" : { },
+    "mode" : "DirectQuery",
+    "details" : {
+      "address" : {
+        "server" : "localhost:31010",
+        "schema" : "MinioData.datalake",
+        "encryption" : "Disabled",
+        "object" : "iris.csv"
+      },
+      "protocol" : "dremio"
+    }
+  } ],
+  "version" : "0.1"
+}

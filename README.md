@@ -1,205 +1,251 @@
-# Guide Complet : Installation Data Lakehouse Local (Dremio + MinIO) sur Docker Windows
+# Guide Complet : Data Lakehouse Local avec Dremio, MinIO et Power BI
 
-Ce guide explique comment monter un environnement Big Data local. Nous utiliserons le dépôt Git.
+Ce guide explique comment déployer et utiliser une architecture Data Lakehouse complète en local à l'aide de Docker.
 
-**Objectif :** Connecter **Dremio** (Moteur de requête) à **MinIO** (Stockage) en utilisant le connecteur **Amazon S3**.
-
----
-
-## 1. Prérequis et Installation
-
-### A. Installer Docker Desktop pour Windows
-Si ce n'est pas déjà fait :
-1.  Téléchargez l'installateur : [Lien Officiel Docker Desktop](https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe?utm_source=docker&utm_medium=webreferral&utm_campaign=docs-driven-download-win-amd64&_gl=1*j4738o*_gcl_au*MTAxNzQ5MDc3MC4xNzcwODQwNTc5*_ga*MzcwNzQxNDA3LjE3NzA4NDA1Nzg.*_ga_XJWPQMJYHQ*czE3NzEwOTM5NjckbzYkZzEkdDE3NzEwOTM5NzAkajU3JGwwJGgw)
-2.  Installez-le en gardant les options par défaut (WSL 2 recommandé).
-3.  **Redémarrez votre ordinateur**.
-
-### B. Récupérer le projet
-1.  Créez un dossier pour vos projets.
-2.  Ouvrez un terminal (PowerShell ou Invite de commandes).
-3.  Clonez le dépôt :
-    ```bash
-    git clone https://github.com/bkablam11/demo-minio-dremio.git
-    ```
-4.  **Entrez dans le dossier** (Étape critique pour éviter l'erreur *"configuration file not found"*) :
-    ```bash
-    cd demo-minio-dremio
-    ```
+**Objectif :** Mettre en place un environnement fonctionnel pour stocker des données (MinIO), les requêter avec du SQL ultra-rapide (Dremio), et les analyser avec des outils de Data Science (Jupyter) et de Business Intelligence (Power BI).
 
 ---
 
-## 2. Préparation des Images et Données (Anti-Erreurs)
+## Table des Matières
+- [Guide Complet : Data Lakehouse Local avec Dremio, MinIO et Power BI](#guide-complet--data-lakehouse-local-avec-dremio-minio-et-power-bi)
+  - [Table des Matières](#table-des-matières)
+  - [1. Architecture des Composants](#1-architecture-des-composants)
+  - [2. Prérequis et Installation](#2-prérequis-et-installation)
+    - [A. Installer Docker Desktop](#a-installer-docker-desktop)
+    - [B. Récupérer le Projet](#b-récupérer-le-projet)
+    - [C. (Optionnel) Télécharger les Images Manuellement](#c-optionnel-télécharger-les-images-manuellement)
+  - [3. Démarrage et Accès aux Services](#3-démarrage-et-accès-aux-services)
+    - [A. Lancer l'Environnement](#a-lancer-lenvironnement)
+    - [B. Tableau de Bord des Accès](#b-tableau-de-bord-des-accès)
+  - [4. Configuration Initiale](#4-configuration-initiale)
+    - [A. MinIO : Créer un Bucket et Ajouter des Données](#a-minio--créer-un-bucket-et-ajouter-des-données)
+    - [B. Dremio : Connecter la Source de Données MinIO](#b-dremio--connecter-la-source-de-données-minio)
+      - [Onglet "General"](#onglet-general)
+      - [Onglet "Advanced Options"](#onglet-advanced-options)
+  - [5. Analyse et Exploration des Données](#5-analyse-et-exploration-des-données)
+    - [A. Avec Dremio (Requêtes SQL)](#a-avec-dremio-requêtes-sql)
+    - [B. Avec JupyterLab (Python)](#b-avec-jupyterlab-python)
+    - [C. Avec Power BI (Visualisation)](#c-avec-power-bi-visualisation)
+  - [](#)
+  - [6. Gestion de l'Environnement Docker](#6-gestion-de-lenvironnement-docker)
 
-### A. Téléchargement manuel des images
-Pour éviter l'erreur `TLS handshake timeout` due à une connexion lente ou instable, téléchargez les images principales une par une avant de lancer le tout :
+---
 
+## 1. Architecture des Composants
+
+| Service | Rôle | Accès Local |
+| :--- | :--- | :--- |
+| **MinIO** | Data Lake (Stockage d'objets S3) | `http://localhost:9001` |
+| **Dremio** | Data Lakehouse (Moteur de requête SQL) | `http://localhost:9047` |
+| **JupyterLab**| Data Science (Analyse en Python) | `http://localhost:8888` |
+
+---
+
+## 2. Prérequis et Installation
+
+### A. Installer Docker Desktop
+Assurez-vous que Docker Desktop est installé et en cours d'exécution.
+- **Windows :** [Lien de téléchargement](https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe)
+- **Mac :** [Lien de téléchargement](https://desktop.docker.com/mac/main/amd64/Docker.dmg)
+
+Installez-le et redémarrez votre ordinateur si nécessaire.
+
+### B. Récupérer le Projet
+Clonez ce dépôt Git dans un dossier de votre choix.
 ```bash
-# Image Dremio (avec Superset intégré)
+git clone https://github.com/bkablam11/demo-minio-dremio.git
+```
+**Important :** Naviguez dans le dossier du projet avant de lancer toute autre commande.
+```bash
+cd demo-minio-dremio
+```
+
+### C. (Optionnel) Télécharger les Images Manuellement
+Pour éviter les erreurs de réseau (`TLS handshake timeout`), vous pouvez télécharger les images Docker en amont.
+```bash
 docker pull dremio/dremio-oss
-
-# Image MinIO (Stockage)
 docker pull minio/minio
-
+docker pull jupyter/scipy-notebook
 ```
-
-### B. Placement des données (Seed Data)
-Le projet est configuré pour charger automatiquement des fichiers dans MinIO si vous les placez au bon endroit sur votre Windows.
-
-*   **Pour MinIO :** Mettez vos fichiers (CSV, Parquet, JSON) dans le dossier :
-    `./minio-data` (situé dans le dossier que vous avez cloné).
 
 ---
 
-## 3. Lancement des Services
+## 3. Démarrage et Accès aux Services
 
-Une fois les images téléchargées, Allez dans Docker et lancer l'orchestration des containers.
+### A. Lancer l'Environnement
+Utilisez Docker Compose pour démarrer tous les services en arrière-plan.
 ```bash
-# Orchestration des containers
-docker-compose up -d minio dremio
-# Verification des containers allumés
-docker ps
-# Arret des containers
-docker-compose down
+docker-compose up -d
 ```
+> **Vérification :** Ouvrez Docker Desktop pour voir les conteneurs `minio`, `dremio`, et `jupyter` allumés en vert.
 
-> **Vérification :** Ouvrez Docker Desktop. Vous devriez voir un groupe `dremio-demo-env` avec les conteneurs `minio`, `dremio`, etc. allumés en vert.
+### B. Tableau de Bord des Accès
 
----
-
-## 4. Configuration de MinIO (Le "Lake")
-
-1.  Accédez à l'interface : **[http://localhost:9001](http://localhost:9001)**
-2.  Identifiants :
-    *   User : `admin`
-    *   Password : `password`
-3.  Vérifiez que vos fichiers placés dans le dossier `./minio-data` apparaissent bien dans le bucket. Sinon, créez un bucket nommé `datalake` et uploadez un fichier manuellement.
-
-![Interface MinIO](./img1.png)
+| Service | URL | Utilisateur | Mot de passe |
+| :--- | :--- | :--- | :--- |
+| **Dremio** | [http://localhost:9047](http://localhost:9047) | *(à créer au premier lancement `bkablam11`)* | *(à créer au premier lancement`Mercimaman2010@`)* |
+| **MinIO** | [http://localhost:9001](http://localhost:9001) | `minioadmin` | `minioadmin` |
+| **JupyterLab**| [http://localhost:8888](http://localhost:8888) | - | `password` |
 
 ---
 
-## 5. Configuration de Dremio (Le "House") - ÉTAPE CRUCIALE
+## 4. Configuration Initiale
 
-C'est ici que nous connectons Dremio à MinIO en utilisant le protocole S3.
+### A. MinIO : Créer un Bucket et Ajouter des Données
+1.  Accédez à MinIO : **[http://localhost:9001](http://localhost:9001)**.
+2.  Connectez-vous avec `minioadmin` / `minioadmin`.
+3.  Créez un **Bucket** (ex: `datalake`).
+4.  Uploadez des fichiers de données (CSV, Parquet...) dans ce bucket. Vous pouvez aussi simplement glisser/déposer des fichiers dans le dossier `./minio-data/datalake` sur votre ordinateur.
 
-1.  Accédez à l'interface : **[http://localhost:9047](http://localhost:9047)**
-2.  Créez votre compte administrateur.
-3.  Cliquez sur le bouton **+ Add Source** (en bas à gauche).
-4.  Sélectionnez **Amazon S3**.
+![Interface MinIO](./img/img1.png)
 
-![Interface Dremio](./img2.png)
+### B. Dremio : Connecter la Source de Données MinIO
+C'est l'étape cruciale où Dremio se connecte à MinIO.
+1.  Accédez à Dremio : **[http://localhost:9047](http://localhost:9047)** et créez votre compte administrateur.
+2.  Cliquez sur **Add Source** et sélectionnez **Amazon S3**.
 
-![Interface Dremio](./img3.png)
+![Ajout Source Dremio](./img/img3.png)
 
-### 3. Connexion de Dremio à MinIO (S3)
+3.  Remplissez les onglets comme suit :
 
-Pour connecter Dremio à votre stockage MinIO local, nous allons utiliser le connecteur **Amazon S3** en mode compatibilité.
+#### Onglet "General"
+- **Name :** `MinioData` (ou le nom de votre choix)
+- **Authentication :** `AWS Access Key`
+- **AWS Access Key :** `minioadmin`
+- **AWS Access Secret :** `minioadmin`
+- **Encrypt connection :** ❌ **DÉCOCHEZ CETTE CASE** (obligatoire pour une connexion HTTP locale).
 
-1.  Cliquez sur le bouton **Add Source** (le `+` bleu) et sélectionnez **Amazon S3**.
-2.  Remplissez le formulaire comme suit :
+![Configuration Générale](./img/img4.png)
 
-#### A. Onglet "General" (Authentification)
-
-Remplissez les informations d'identification définies dans votre fichier `docker-compose.yml` :
-
-*   **Name :** `MinioData` (Ce sera le nom de la source dans Dremio).
-*   **Authentication :** Laissez sur `AWS Access Key`.
-*   **AWS Access Key :** `admin`
-*   **AWS Access Secret :** `password`
-*   **Encrypt connection :** ❌ **DÉCOCHEZ OBLIGATOIREMENT CETTE CASE**.
-    *   *Note : MinIO tourne en HTTP local sans certificat SSL. Si vous laissez coché, la connexion échouera.*
-
-![Capture écran General Dremio](./img4.png)
-
-#### B. Onglet "Advanced Options" (Configuration Réseau)
-
-C'est ici que nous disons à Dremio de ne pas aller sur le vrai Amazon AWS, mais sur notre conteneur Docker.
-
-1.  Cochez la case **Enable compatibility mode** (si disponible).
-2.  Dans la section **Connection Properties**, ajoutez les propriétés suivantes une par une :
-
-| Name (Nom) | Value (Valeur) | Explication Technique |
+#### Onglet "Advanced Options"
+Ajoutez les propriétés de connexion suivantes pour pointer vers votre conteneur MinIO local.
+| Name (Nom) | Value (Valeur) | Explication |
 | :--- | :--- | :--- |
-| **`fs.s3a.endpoint`** | `minio:9000` | **Crucial :** Indique l'adresse du conteneur dans le réseau Docker. |
-| **`fs.s3a.path.style.access`** | `true` | Force l'URL sous la forme `domaine/bucket` (requis par MinIO). |
-| **`dremio.s3.compat`** | `true` | Active les correctifs de compatibilité S3 pour Dremio. |
+| **`fs.s3a.endpoint`** | `minio:9000` | Adresse du conteneur MinIO dans le réseau Docker. |
+| **`fs.s3a.path.style.access`** | `true` | Format d'URL compatible avec MinIO. |
+| **`dremio.s3.compat`** | `true` | Mode de compatibilité S3 de Dremio. |
 
-> **⚠️ Attention au piège :** Ne mettez pas `localhost:9000` dans le endpoint !
-> Dremio tourne dans un conteneur. Pour lui, `localhost` c'est lui-même. Il doit contacter le conteneur `minio` via son nom de service Docker.
+> **⚠️ Attention :** N'utilisez jamais `localhost:9000`. Les conteneurs communiquent via leur nom de service sur le réseau Docker.
 
-3.  Cliquez sur **Save**.
-![Configuration Amazon S3](./img5.png)
+4.  Cliquez sur **Save**. Votre stockage est maintenant visible dans Dremio.
 
-***
-
-![Interface Dremio](./img6.png)
-
-## 6. Récapitulatif des Accès (URLs)
-
-Voici les adresses pour accéder à tous vos services locaux une fois lancés :
-
-*   **Dremio (Requêtes SQL) :** [http://localhost:9047](http://localhost:9047)
-*   **MinIO (Stockage) :** [http://localhost:9001](http://localhost:9001)
+![Configuration Avancée](./img/img5.png)
 
 ---
 
+## 5. Analyse et Exploration des Données
 
-## 🛠️ Dépannage des erreurs fréquentes
+### A. Avec Dremio (Requêtes SQL)
+1.  **Transformer un Fichier en Table :**
+    - Dans Dremio, naviguez jusqu'à votre fichier CSV dans la source `MinioData`.
+    - Cliquez sur l'icône de formatage à droite, configurez le délimiteur (ex: `,`) et cochez **Extract Field Names**.
+    - Sauvegardez. L'icône du fichier devient violette, indiquant qu'il est prêt à être requêté.
+2.  **Exécuter des Requêtes SQL :**
+    - Ouvrez le **SQL Runner** et exécutez des commandes sur vos données.
+    ```sql
+    -- Requête simple
+    SELECT * FROM MinioData.datalake."iris.csv" LIMIT 10;
+    
+    -- Agrégation
+    SELECT species, COUNT(*) as count
+    FROM MinioData.datalake."iris.csv"
+    GROUP BY species;
+    ```
+![Requêtes Avancée](./img/img999.png)
 
-| Erreur | Cause probable | Solution |
-| :--- | :--- | :--- |
-| `TLS handshake timeout` | Connexion internet saturée lors du téléchargement des images. | Faire les `docker pull` manuellement un par un (voir Étape 2). |
-| `no configuration file provided` | Vous n'êtes pas dans le bon dossier. | Faites `cd le_nom_du_dossier` avant de lancer docker-compose. |
-| `Unsupported or unrecognized SSL message` | Dremio essaie de parler HTTPS à MinIO HTTP. | **Décochez** "Encrypt connection" dans la source Dremio. |
-| `UnknownHostException` | Dremio ne trouve pas le serveur. | Dans `fs.s3a.endpoint`, mettez `minio:9000` au lieu de localhost. |
+3.  **Créer une Vue (Virtual Dataset) :**
+    - Après avoir exécuté une requête, cliquez sur **Save View As...** pour sauvegarder votre logique d'analyse sans dupliquer les données.
 
+### B. Avec JupyterLab (Python)
+1.  **Accès :** Allez sur **[http://localhost:8888](http://localhost:8888)** et entrez le mot de passe `password`.
+2.  **Créer un Notebook** et utilisez le code suivant pour vous connecter à MinIO et charger des données dans un DataFrame Pandas.
+```python
+# 1. Installation des librairies nécessaires
+!pip install s3fs pandas
+
+import pandas as pd
+
+# 2. Configuration de la connexion à MinIO
+storage_options = {
+    "key": "minioadmin",
+    "secret": "minioadmin",
+    "client_kwargs": {
+        "endpoint_url": "http://minio:9000"
+    }
+}
+
+# 3. Lecture d'un fichier depuis un bucket
+try:
+    df = pd.read_csv('s3://datalake/iris.csv', storage_options=storage_options)
+    print("✅ Données chargées avec succès !")
+    display(df.head())
+except Exception as e:
+    print(f"❌ Erreur de connexion : {e}")
+
+
+# 1. Installation des librairies nécessaires
+!pip install s3fs pandas
+
+import pandas as pd
+
+# 2. Configuration de la connexion à MinIO
+storage_options = {
+    "key": "minioadmin",
+    "secret": "minioadmin",
+    "client_kwargs": {
+        "endpoint_url": "http://minio:9000"
+    }
+}
+
+# 3. Lecture d'un fichier depuis un bucket
+try:
+    df = pd.read_csv('s3://datalake/iris.csv', storage_options=storage_options)
+    print("✅ Données chargées avec succès !")
+    display(df.head())
+except Exception as e:
+    print(f"❌ Erreur de connexion : {e}")
+```
+![Requêtes Avancée](./img/img9.png)
+
+### C. Avec Power BI (Visualisation)
+0.**Download Powerbi**
+a. Windows [PowerBi](https://download.microsoft.com/download/8/8/0/880bca75-79dd-466a-927d-1abf1f5454b0/PBIDesktopSetup_x64.exe)
+b. Pas disponible.
+1.  **Installer le Driver ODBC :**
+    - Téléchargez et installez le **Windows 64-bit ODBC Installer** depuis la [page des drivers Dremio](https://www.dremio.com/drivers/odbc/).
+2.  **Configurer la Source de Données ODBC :**
+    - Dans la recherche Windows, ouvrez **"Administrateur de sources de données ODBC (64 bits)"**.
+    - Sous `Sources de données système`, cliquez sur `Ajouter...` et sélectionnez `Dremio Connector`.
+    - Configurez comme suit :
+        - **Data Source Name :** `DremioDocker`
+        - **Host :** `localhost`
+        - **Port :** `31010`
+        - **Authentication :** `Plain`
+        - **User/Password :** Vos identifiants Dremio.
+    - Testez et sauvegardez la connexion.
+3.  **Connecter Power BI :**
+    - Dans Power BI, choisissez `Obtenir les données` > `Plus...` > `ODBC`.
+    - Sélectionnez `DremioDocker` (le nom de votre source de données) dans la liste déroulante.
+    - Naviguez jusqu'à vos données et commencez à créer vos tableaux de bord.
+
+![Requêtes Avancée](./img/img1111.png)
+
+![Requêtes Avancée](./img/img111.png)
 ---
-## 7. Premières Requêtes SQL (Transformation & Analyse)
 
-Une fois la source connectée, vous verrez vos fichiers (ex: `iris.csv`). Par défaut, Dremio les voit comme de simples fichiers textes. Nous devons les convertir en **Tables (Datasets)**.
+## 6. Gestion de l'Environnement Docker
+- **Allumer les conteneurs actifs :**
+  ```bash
+  docker-compose up -d
+  ```
 
-### A. Transformer le CSV en Dataset
-1.  Dans l'interface Dremio, passez la souris sur le fichier **`iris.csv`**.
-2.  Cliquez sur l'icône **"Format Settings"** (le petit dossier ou crayon à droite du nom).
-3.  Configurez comme suit :
-    *   **Format :** `Text (delimited)`
-    *   **Field Delimiter :** `,` (Comma)
-    *   ✅ **Cochez "Extract Field Names"** (Indispensable pour avoir les en-têtes de colonnes).
-4.  Cliquez sur **Save**.
-    *   *Résultat :* L'icône du fichier devient violette. C'est maintenant une table prête à l'emploi.
+- **Vérifier les conteneurs actifs :**
+  ```bash
+  docker ps
+  ```
+- **Arrêter tous les services :**
+  ```bash
+  docker-compose down
+  ```
+  > Vos données dans MinIO et votre configuration Dremio seront conservées grâce aux volumes persistants.
 
-### B. Exécuter du SQL
-Cliquez sur le bouton **New Query** (ou SQL Runner) en haut à gauche et testez ces commandes :
-
-**1. Voir les données :**
-```sql
-SELECT * 
-FROM MinioData.datalake."iris.csv"
-LIMIT 20
-```
-
-**2. Compter les lignes :**
-```sql
-SELECT COUNT(*) as total_fleurs
-FROM MinioData.datalake."iris.csv"
-```
-
-**3. Agrégation (Moyenne par espèce) :**
-C'est ici la puissance du Lakehouse : faire des stats sur un fichier CSV comme si c'était une base de données.
-```sql
-SELECT 
-    species, 
-    AVG(sepal_length) as moyenne_sepal,
-    AVG(petal_length) as moyenne_petal
-FROM MinioData.datalake."iris.csv"
-GROUP BY species
-```
-
-### C. Créer une "Vue" (Virtual Dataset)
-Pour sauvegarder votre travail sans dupliquer la donnée :
-1.  Exécutez la requête d'agrégation ci-dessus (n°3).
-2.  Cliquez sur la flèche à côté du bouton **Save Script** -> **Save View as...**.
-3.  Nommez-la `stats_iris` et enregistrez-la dans votre espace.
-    *   *Avantage :* Si vous modifiez le fichier CSV dans MinIO, cette vue se mettra à jour automatiquement !
-
-> **Note :** Le fichier `README.pdf` visible dans MinIO ne peut pas être requêté. Dremio ne traite que la donnée structurée (CSV, JSON, Parquet, Iceberg).

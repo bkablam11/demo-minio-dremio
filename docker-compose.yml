@@ -6,14 +6,15 @@ services:
     image: minio/minio:latest
     container_name: minio
     hostname: minio
+    # Compatible ARM et x86 nativement, pas besoin de platform
     environment:
-      - MINIO_ROOT_USER=admin
-      - MINIO_ROOT_PASSWORD=password
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
     ports:
-      - "9000:9000"  # Port API (utilisé par Dremio)
-      - "9001:9001"  # Port Console Web (pour créer vos buckets)
+      - "9000:9000"
+      - "9001:9001"
     volumes:
-      - ./minio-data:/data  # Persistance des données sur votre PC
+      - ./minio-data:/data # Monte le dossier local pour persister les données
     command: server /data --console-address ":9001"
     networks:
       - data-lake-network
@@ -21,15 +22,42 @@ services:
   # --- Service de Requête (Data Lakehouse) ---
   dremio:
     image: dremio/dremio-oss:latest
+    # AJOUT CRUCIAL POUR MAC M1/M2/M3 :
+    platform: linux/amd64
     container_name: dremio
     hostname: dremio
     ports:
-      - "9047:9047"   # Interface Web Dremio
-      - "31010:31010" # Port pour connecter PowerBI/Tableau plus tard
+      - "9047:9047"
+      - "31010:31010"
+      - "32010:32010" # Ports pour les différentes interfaces de Dremio
     environment:
       - DREMIO_JAVA_SERVER_EXTRA_OPTS=-Dpaths.dist=file:///opt/dremio/data/dist
+    # volumes:
+    #   - ./dremio-data:/opt/dremio/data # Monte le dossier local pour persister les données
+    networks:
+      - data-lake-network
+
+  # --- Service Data Science (JupyterLab) ---
+  jupyter:
+    image: jupyter/scipy-notebook:latest
+    container_name: jupyter
+    hostname: jupyter
+    # C'EST LA LIGNE MAGIQUE : On force l'utilisateur ROOT
+    user: root
+    ports:
+      - "8888:8888"
+    environment:
+      - JUPYTER_TOKEN=password
+      - JUPYTER_ENABLE_LAB=yes
+      # Autorise Root à lancer Jupyter sans avertissement de sécurité
+      - GRANT_SUDO=yes
+    volumes:
+      # Le dossier local "./notebooks" sera monté dans le dossier de travail
+      - ./notebook-seed:/workspace/seed-data  # Volume for seeding data into the container
     networks:
       - data-lake-network
 
 networks:
   data-lake-network:
+
+
